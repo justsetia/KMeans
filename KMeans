@@ -1,0 +1,101 @@
+import os
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from PIL import Image, ImageTk
+import numpy as np
+from matplotlib.image import imread
+from sklearn.cluster import KMeans
+import warnings
+warnings.filterwarnings("ignore")
+
+class ImageProcessorApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Image Segmentation with K-means Clustering")
+
+        self.k_label = tk.Label(root, text="Enter number of clusters (k):")
+        self.k_label.pack()
+
+        self.k_entry = tk.Entry(root)
+        self.k_entry.pack()
+
+        self.upload_button = tk.Button(root, text="Upload Image", command=self.upload_image)
+        self.upload_button.pack()
+
+        self.process_button = tk.Button(root, text="Process Image", command=self.process_image)
+        self.process_button.pack()
+
+        self.original_label = tk.Label(root, text="Original Image")
+        self.original_label.pack(side="left", padx=10)
+
+        self.processed_label = tk.Label(root, text="Processed Image")
+        self.processed_label.pack(side="right", padx=10)
+
+        self.original_image_label = tk.Label(root)
+        self.original_image_label.pack(side="left", padx=10)
+
+        self.processed_image_label = tk.Label(root)
+        self.processed_image_label.pack(side="right", padx=10)
+
+        self.image_path = None
+        self.original_image = None
+
+    def upload_image(self):
+        self.image_path = filedialog.askopenfilename()
+        if self.image_path:
+            self.original_image = Image.open(self.image_path)
+            self.original_image.thumbnail((300, 300))
+            self.display_image(self.original_image, self.original_image_label)
+            original_size_kb = os.path.getsize(self.image_path) / 1024
+            self.root.title(f"Original Image Size: {original_size_kb:.2f} KB")
+            self.original_size_kb = original_size_kb  # Store the original size for later use
+
+    def process_image(self):
+        if not self.image_path:
+            messagebox.showerror("Error", "Please upload an image first.")
+            return
+
+        try:
+            k = int(self.k_entry.get())
+        except ValueError:
+            messagebox.showerror("Error", "Please enter a valid number for k.")
+            return
+
+        original_image, segmented_image = self.segment_image(self.image_path, k)
+        segmented_image.thumbnail((300, 300))  # Resize the processed image to match the original
+        self.display_image(segmented_image, self.processed_image_label)
+        segmented_image.save("segmented_image.png")
+        processed_size_kb = os.path.getsize('segmented_image.png') / 1024
+
+        # Calculate compression ratio and size reduction percentage
+        compression_ratio = self.original_size_kb / processed_size_kb
+        size_reduction_percent = ((self.original_size_kb - processed_size_kb) / self.original_size_kb) * 100
+
+        # Update the window title with the new information
+        self.root.title(f"Original Size: {self.original_size_kb:.2f} KB | "
+                        f"Processed Size: {processed_size_kb:.2f} KB | "
+                        f"Compression Ratio: {compression_ratio:.2f} | "
+                        f"Size Reduction: {size_reduction_percent:.2f}%")
+
+    def segment_image(self, image_path, k):
+        image = imread(image_path)
+        x = image.reshape(-1, image.shape[2])
+        # After clustering, each data point is assigned to the center
+        kmeans = KMeans(n_clusters=k).fit(x)
+        # Assigning each pixel in the original image to its corresponding centroid
+        segmented_image = kmeans.cluster_centers_[kmeans.labels_]
+        segmented_image = segmented_image.reshape(image.shape)
+        #
+        segmented_image = (segmented_image - np.min(segmented_image)) / (np.max(segmented_image) - np.min(segmented_image))
+        segmented_image = (segmented_image * 255).astype(np.uint8)
+        return Image.fromarray(image), Image.fromarray(segmented_image)
+
+    def display_image(self, image, label):
+        imgtk = ImageTk.PhotoImage(image)
+        label.imgtk = imgtk
+        label.configure(image=imgtk)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ImageProcessorApp(root)
+    root.mainloop()
